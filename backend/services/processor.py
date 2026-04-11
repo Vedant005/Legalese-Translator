@@ -1,9 +1,13 @@
 import fitz  
 import os
+import asyncio
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_voyageai import VoyageAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
-from langchain_google_genai import ChatGoogleGenerativeAI
+from groq import AsyncGroq
+
+groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+
 
 class DocumentProcessor:
     def __init__(self):
@@ -13,21 +17,23 @@ class DocumentProcessor:
             separators=["\n\n", "\n", ".", " "]
         )
 
-        self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        self.voyage_key = os.getenv("VOYAGE_API_KEY")
         self.pinecone_key = os.getenv("PINECONE_API_KEY")
+        self.groq_key = os.getenv("GROQ_API_KEY")
 
-        if not self.google_api_key:
-            raise ValueError("GOOGLE_API_KEY is not set in the environment. Check your .env file.")
+        if not self.voyage_key:
+            raise ValueError("VOYAGE_API_KEY is not set in the environment. Check your .env file.")
+        if not self.groq_key:
+            raise ValueError("GROQ_API_KEY is not set in the environment. Check your .env file.")
 
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
-            output_dimensionality=768,
-            google_api_key=self.google_api_key
+        self.embeddings = VoyageAIEmbeddings(
+            model="voyage-law-2",
+            voyage_api_key=self.voyage_key,
+            batch_size=8
         )
 
     def extract_text_from_memory(self, file_bytes: bytes) -> str:
         """Extracts text from a PDF stream in RAM."""
-        # Open the PDF directly from the byte stream
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         text = ""
         for page in doc:
@@ -49,6 +55,31 @@ class DocumentProcessor:
         )
         return vectorstore
     
+    @staticmethod
+    async def _call_groq_with_retry(
+        system_instruction: str,
+        content: str,
+        model: str = "llama-3.3-70b-versatile",
+        retries: int = 3,
+    ) -> tuple[str, str]:
+        last_error = None
+        for attempt in range(retries):
+            try:
+                response = await groq_client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": f"<transcript>\n{content}\n</transcript>"},
+                    ],
+                    temperature=0.7,
+                )
+                return  response.choices[0].message.content
+            except Exception as e:
+                last_error = e
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+        return  f"Error: {last_error}"
+    
     async def analyze_contract(self, filename: str):
         
         vectorstore = PineconeVectorStore(
@@ -62,31 +93,31 @@ class DocumentProcessor:
         relevant_docs = vectorstore.similarity_search(query, k=5)
         context_text = "\n\n".join([doc.page_content for doc in relevant_docs])
 
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=self.google_api_key,
-            temperature=0
-        )
 
-        prompt = f"""
-        You are a helpful 'Legalese Translator'. Below is a snippet from a legal contract.
+        system_prompt = """
+        You are a helpful 'Legalese Translator'. You will be provided snippets from a legal contract.
         
         TASK:
         1. Find any 'Red Flags' (scary stuff that hurts the user).
         2. Explain each flag like the user is 5 years old. 
         3. Use a tone that is protective but simple.
         
-        CONTRACT SNIPPETS:
-        {context_text}
-        
-        FORMAT YOUR RESPONSE AS JSON:
-        {{
-            "risk_score": (1-10),
+        FORMAT YOUR RESPONSE AS STRICT JSON:
+        {
+            "risk_score": 8,
             "flags": [
-                {{ "clause_title": "...", "simple_explanation": "...", "severity": "High/Med" }}
+                { "clause_title": "...", "simple_explanation": "...", "severity": "High/Med" }
             ]
-        }}
+        }
         """
-        
-        response = await llm.ainvoke(prompt)
-        return response.content
+
+        results = await asyncio.gather(
+            DocumentProcessor._call_groq_with_retry(
+                system_instruction=system_prompt,
+                content=context_text,
+                model="llama-3.3-70b-versatile",
+            )
+        )
+
+        # asyncio.gather returns a list! We must return the first item.
+        return results[0]
