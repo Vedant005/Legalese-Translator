@@ -2,12 +2,11 @@ import fitz
 import os
 import asyncio
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_voyageai import VoyageAIEmbeddings
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from groq import AsyncGroq
 
 groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
-
 
 class DocumentProcessor:
     def __init__(self):
@@ -17,19 +16,19 @@ class DocumentProcessor:
             separators=["\n\n", "\n", ".", " "]
         )
 
-        self.voyage_key = os.getenv("VOYAGE_API_KEY")
         self.pinecone_key = os.getenv("PINECONE_API_KEY")
         self.groq_key = os.getenv("GROQ_API_KEY")
+        self.hf_token = os.getenv("HF_TOKEN")
 
-        if not self.voyage_key:
-            raise ValueError("VOYAGE_API_KEY is not set in the environment. Check your .env file.")
         if not self.groq_key:
-            raise ValueError("GROQ_API_KEY is not set in the environment. Check your .env file.")
+            raise ValueError("GROQ_API_KEY is not set in the environment.")
+        if not self.hf_token:
+            raise ValueError("HF_TOKEN is not set in the environment.")
 
-        self.embeddings = VoyageAIEmbeddings(
-            model="voyage-law-2",
-            voyage_api_key=self.voyage_key,
-            batch_size=8
+        self.embeddings = HuggingFaceEndpointEmbeddings(
+            model="BAAI/bge-large-en-v1.5",
+            huggingfacehub_api_token=self.hf_token,
+            task="feature-extraction"
         )
 
     def extract_text_from_memory(self, file_bytes: bytes) -> str:
@@ -72,13 +71,14 @@ class DocumentProcessor:
                         {"role": "user", "content": f"<transcript>\n{content}\n</transcript>"},
                     ],
                     temperature=0.7,
+                    response_format={"type": "json_object"} 
                 )
                 return  response.choices[0].message.content
             except Exception as e:
                 last_error = e
                 if attempt < retries - 1:
                     await asyncio.sleep(2 ** attempt)
-        return  f"Error: {last_error}"
+        return f'{{"error": "{str(last_error)}"}}'
     
     async def analyze_contract(self, filename: str):
         
