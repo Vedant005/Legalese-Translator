@@ -7,12 +7,16 @@ import {
   ArrowRight,
   AlertTriangle,
   ShieldAlert,
+  Loader2,
 } from "lucide-react";
 
 export default function LegaleseTranslator() {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<any | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -29,20 +33,59 @@ export default function LegaleseTranslator() {
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       setFile(e.dataTransfer.files[0]);
-      setIsAnalyzing(false); // Reset analysis state if a new file is dropped
+      setAnalysisResult(null);
+      setError(null);
     }
   };
 
-  const handleAnalyze = () => {
-    // In a real app, you would trigger the backend upload/analysis here
-    setIsAnalyzing(true);
+  const handleAnalyze = async () => {
+    if (!file) return;
 
-    // Optional: smoothly scroll to the results
-    setTimeout(() => {
-      document
-        .getElementById("analysis-results")
-        ?.scrollIntoView({ behavior: "smooth" });
-    }, 100);
+    setIsProcessing(true);
+    setError(null);
+    setAnalysisResult(null);
+
+    try {
+      // 1. Upload the file
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await fetch("http://localhost:8000/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("Failed to upload the document.");
+      }
+
+      const uploadData = await uploadRes.json();
+      const namespace = uploadData.namespace;
+
+      // 2. Fetch the analysis using the generated namespace
+      const analyzeRes = await fetch(
+        `http://localhost:8000/analyze/${namespace}`,
+      );
+
+      if (!analyzeRes.ok) {
+        throw new Error("Failed to analyze the document.");
+      }
+
+      const analyzeData = await analyzeRes.json();
+      setAnalysisResult(analyzeData);
+
+      // Smoothly scroll to the results
+      setTimeout(() => {
+        document
+          .getElementById("analysis-results")
+          ?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "An unexpected error occurred.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -50,7 +93,7 @@ export default function LegaleseTranslator() {
       <header className="mb-10">
         <div className="flex items-center justify-between border-b border-black pb-4">
           <h1 className="font-display font-bold text-xl uppercase tracking-widest">
-            Leagalese{" "}
+            Aequitas{" "}
             <span className="font-mono text-muted-foreground text-sm normal-case">
               v1.0
             </span>
@@ -104,7 +147,8 @@ export default function LegaleseTranslator() {
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
                   setFile(e.target.files[0]);
-                  setIsAnalyzing(false);
+                  setAnalysisResult(null);
+                  setError(null);
                 }
               }}
             />
@@ -138,29 +182,52 @@ export default function LegaleseTranslator() {
             )}
           </label>
 
+          {/* ERROR MESSAGE DISPLAY */}
+          {error && (
+            <div className="mt-8 border-2 border-black bg-white p-4 flex items-center gap-4">
+              <AlertTriangle className="text-black" size={24} />
+              <span className="font-mono text-sm uppercase tracking-widest text-black font-bold">
+                Error: {error}
+              </span>
+            </div>
+          )}
+
           <div className="mt-8 flex justify-end">
             <button
               onClick={handleAnalyze}
-              disabled={!file}
+              disabled={!file || isProcessing}
               className={`
                 flex items-center gap-4 px-8 py-4 uppercase tracking-widest text-sm font-medium
                 transition-none border-2 border-transparent
                 focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-3
                 ${
-                  file
+                  file && !isProcessing
                     ? "bg-black text-white hover:bg-white hover:text-black hover:border-black cursor-pointer"
                     : "bg-muted text-muted-foreground cursor-not-allowed"
                 }
               `}
             >
-              Analyze Document
-              <ArrowRight size={20} strokeWidth={1.5} />
+              {isProcessing ? (
+                <>
+                  Processing
+                  <Loader2
+                    size={20}
+                    strokeWidth={1.5}
+                    className="animate-spin"
+                  />
+                </>
+              ) : (
+                <>
+                  Analyze Document
+                  <ArrowRight size={20} strokeWidth={1.5} />
+                </>
+              )}
             </button>
           </div>
         </div>
       </section>
 
-      {isAnalyzing && (
+      {analysisResult && (
         <section
           id="analysis-results"
           className="animate-in fade-in duration-500 mt-16"
@@ -175,22 +242,23 @@ export default function LegaleseTranslator() {
               <h2 className="font-display text-4xl md:text-5xl lg:text-6xl tracking-tight leading-none">
                 Risk Assessment Profile
               </h2>
-              <div className="font-mono text-sm mt-4 text-muted-foreground flex gap-4 uppercase tracking-widest">
-                <span>
-                  Namespace: {file?.name || "xyz_terms_and_conditions.pdf"}
+              <div className="font-mono text-sm mt-4 text-muted-foreground flex flex-wrap gap-4 uppercase tracking-widest">
+                <span className="truncate max-w-[200px] md:max-w-md">
+                  ID: {analysisResult.filename}
                 </span>
                 <span>•</span>
-                <span>Flags: 7 Detected</span>
+                <span>
+                  Flags: {analysisResult.analysis.flags.length} Detected
+                </span>
               </div>
             </div>
 
-            {/* BIG METRIC HERO */}
             <div className="md:col-span-4 text-right">
               <span className="font-mono text-sm uppercase tracking-widest block mb-2">
                 Total Risk Score
               </span>
               <div className="font-display text-8xl lg:text-9xl tracking-tighter leading-none text-black">
-                9
+                {analysisResult.analysis.risk_score}
                 <span className="text-4xl lg:text-5xl text-muted-foreground">
                   /10
                 </span>
@@ -198,214 +266,69 @@ export default function LegaleseTranslator() {
             </div>
           </header>
 
-          {/* TL;DR SUMMARY */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-12 mb-24">
-            <div className="md:col-span-4 border-r-2 border-black pr-8">
-              <h3 className="font-display text-3xl mb-4">Executive Summary</h3>
-              <div className="texture-lines w-full h-12 opacity-[0.015]"></div>
-            </div>
-            <div className="md:col-span-8">
-              <p className="font-body text-2xl lg:text-3xl leading-relaxed">
-                This document heavily favors the drafting party. It severely
-                limits your ability to claim damages, imposes strict financial
-                penalties for standard cancellations, and shifts the burden of
-                intellectual property disputes entirely onto you. Proceed with
-                extreme caution.
-              </p>
-            </div>
-          </div>
-
-          {/* DETAILED FLAGS */}
           <div className="space-y-12">
-            {/* HIGH RISK FLAG 1 */}
-            <article className="border-4 border-black bg-black text-white p-8 md:p-12 relative group">
-              <div className="absolute top-0 right-0 bg-white text-black p-4 border-b-4 border-l-4 border-black">
-                <ShieldAlert size={32} strokeWidth={1.5} />
-              </div>
-              <span className="font-mono text-xs uppercase tracking-widest mb-6 block border-b border-white/20 pb-4 inline-flex items-center gap-2">
-                <span className="w-2 h-2 bg-white inline-block"></span>
-                Severity: High Risk
-              </span>
+            {analysisResult.analysis.flags.map((flag: any, index: number) => {
+              const isHighRisk = flag.severity.toLowerCase().includes("high");
 
-              <h4 className="font-display text-3xl md:text-5xl mb-8">
-                Refund with Depreciation
-              </h4>
+              if (isHighRisk) {
+                return (
+                  <article
+                    key={index}
+                    className="border-4 border-black bg-black text-white p-8 md:p-12 relative group"
+                  >
+                    <div className="absolute top-0 right-0 bg-white text-black p-4 border-b-4 border-l-4 border-black">
+                      <ShieldAlert size={32} strokeWidth={1.5} />
+                    </div>
+                    <span className="font-mono text-xs uppercase tracking-widest mb-6 block border-b border-white/20 pb-4 inline-flex items-center gap-2">
+                      <span className="w-2 h-2 bg-white inline-block"></span>
+                      Severity: High Risk
+                    </span>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-8">
-                <div>
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-white/60 mb-3">
-                    Simple Explanation
-                  </h5>
-                  <p className="font-body text-xl lg:text-2xl leading-relaxed">
-                    If the seller has to take back the goods because of a
-                    problem, they will only give you back the money you paid,
-                    minus 20% for each year you had the goods. This means you
-                    might not get all your money back.
-                  </p>
-                </div>
-                <div className="border-t border-white/20 md:border-t-0 md:border-l border-white/20 pt-8 md:pt-0 md:pl-8">
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-white/60 mb-3">
-                    Extracted Legalese
-                  </h5>
-                  <p className="font-mono text-sm leading-relaxed text-white/80 bg-white/5 p-4 border border-white/10">
-                    "In the event of a required refund or return of defective
-                    merchandise, Seller shall remit the purchase price less a
-                    twenty percent (20%) depreciation fee per annum from the
-                    date of original delivery..."
-                  </p>
+                    <h4 className="font-display text-3xl md:text-5xl mb-8">
+                      {flag.clause_title}
+                    </h4>
 
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-white/60 mt-6 mb-3">
-                    Actionable Advice
-                  </h5>
-                  <p className="font-body text-lg text-white">
-                    Do not sign if you expect long-term warranty protection.
-                    Negotiate a full refund for manufacturer defects.
-                  </p>
-                </div>
-              </div>
-            </article>
+                    <div>
+                      <h5 className="font-mono text-xs uppercase tracking-widest text-white/60 mb-3">
+                        Simple Explanation
+                      </h5>
+                      <p className="font-body text-xl lg:text-2xl leading-relaxed max-w-4xl">
+                        {flag.simple_explanation}
+                      </p>
+                    </div>
+                  </article>
+                );
+              }
 
-            {/* HIGH RISK FLAG 2 */}
-            <article className="border-4 border-black bg-black text-white p-8 md:p-12 relative">
-              <div className="absolute top-0 right-0 bg-white text-black p-4 border-b-4 border-l-4 border-black">
-                <ShieldAlert size={32} strokeWidth={1.5} />
-              </div>
-              <span className="font-mono text-xs uppercase tracking-widest mb-6 block border-b border-white/20 pb-4 inline-flex items-center gap-2">
-                <span className="w-2 h-2 bg-white inline-block"></span>
-                Severity: High Risk
-              </span>
+              return (
+                <article
+                  key={index}
+                  className="border-2 border-black bg-white text-black p-8 md:p-12"
+                >
+                  <span className="font-mono text-xs uppercase tracking-widest mb-6 block border-b border-black pb-4 text-muted-foreground inline-flex items-center gap-2">
+                    <AlertTriangle
+                      size={14}
+                      strokeWidth={2}
+                      className="text-black"
+                    />
+                    Severity: {flag.severity}
+                  </span>
 
-              <h4 className="font-display text-3xl md:text-5xl mb-8">
-                Limited Warranty
-              </h4>
+                  <h4 className="font-display text-3xl md:text-4xl mb-6">
+                    {flag.clause_title}
+                  </h4>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-8">
-                <div>
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-white/60 mb-3">
-                    Simple Explanation
-                  </h5>
-                  <p className="font-body text-xl lg:text-2xl leading-relaxed">
-                    The seller is only responsible for replacing goods that are
-                    defective, and they won't pay more than the original price
-                    of the goods. This means if something goes wrong, you might
-                    not get much help or money back.
-                  </p>
-                </div>
-                <div className="border-t border-white/20 md:border-t-0 md:border-l border-white/20 pt-8 md:pt-0 md:pl-8">
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-white/60 mb-3">
-                    Extracted Legalese
-                  </h5>
-                  <p className="font-mono text-sm leading-relaxed text-white/80 bg-white/5 p-4 border border-white/10">
-                    "Liability of Seller is limited strictly to replacement of
-                    defective goods and shall in no event exceed the original
-                    purchase price paid by Buyer..."
-                  </p>
-
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-white/60 mt-6 mb-3">
-                    Actionable Advice
-                  </h5>
-                  <p className="font-body text-lg text-white">
-                    Be aware that secondary damages (like lost data or business
-                    interruption) are entirely uncovered.
-                  </p>
-                </div>
-              </div>
-            </article>
-
-            {/* MEDIUM RISK FLAG 1 */}
-            <article className="border-2 border-black bg-white text-black p-8 md:p-12">
-              <span className="font-mono text-xs uppercase tracking-widest mb-6 block border-b border-black pb-4 text-muted-foreground inline-flex items-center gap-2">
-                <AlertTriangle
-                  size={14}
-                  strokeWidth={2}
-                  className="text-black"
-                />
-                Severity: Moderate
-              </span>
-
-              <h4 className="font-display text-3xl md:text-4xl mb-6">
-                No Other Warranties
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-6">
-                <div>
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mb-3">
-                    Simple Explanation
-                  </h5>
-                  <p className="font-body text-xl leading-relaxed">
-                    The seller is saying that the only promises they make are
-                    the ones written down in the contract. If something goes
-                    wrong and it's not in the contract, they might not help you.
-                  </p>
-                </div>
-                <div className="border-t border-black/10 md:border-t-0 md:border-l border-black/10 pt-8 md:pt-0 md:pl-8">
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mb-3">
-                    Extracted Legalese
-                  </h5>
-                  <p className="font-mono text-sm leading-relaxed text-muted-foreground bg-muted/30 p-4 border border-black/10">
-                    "Except as expressly set forth herein, Seller makes no
-                    warranties, express or implied, including but not limited to
-                    implied warranties of merchantability..."
-                  </p>
-
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mt-6 mb-3">
-                    Actionable Advice
-                  </h5>
-                  <p className="font-body text-lg font-medium">
-                    Ensure every verbal promise the salesperson made is
-                    explicitly written into this document before signing.
-                  </p>
-                </div>
-              </div>
-            </article>
-
-            {/* MEDIUM RISK FLAG 2 */}
-            <article className="border-2 border-black bg-white text-black p-8 md:p-12">
-              <span className="font-mono text-xs uppercase tracking-widest mb-6 block border-b border-black pb-4 text-muted-foreground inline-flex items-center gap-2">
-                <AlertTriangle
-                  size={14}
-                  strokeWidth={2}
-                  className="text-black"
-                />
-                Severity: Moderate
-              </span>
-
-              <h4 className="font-display text-3xl md:text-4xl mb-6">
-                Cancellation Fee
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-6">
-                <div>
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mb-3">
-                    Simple Explanation
-                  </h5>
-                  <p className="font-body text-xl leading-relaxed">
-                    If you cancel your order or want to change it, you have to
-                    pay 15% of the remaining price, plus any costs the seller
-                    already had. This could be a lot of money.
-                  </p>
-                </div>
-                <div className="border-t border-black/10 md:border-t-0 md:border-l border-black/10 pt-8 md:pt-0 md:pl-8">
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mb-3">
-                    Extracted Legalese
-                  </h5>
-                  <p className="font-mono text-sm leading-relaxed text-muted-foreground bg-muted/30 p-4 border border-black/10">
-                    "Any cancellation or modification of orders by Buyer is
-                    subject to a cancellation fee equal to fifteen percent (15%)
-                    of the remaining balance..."
-                  </p>
-
-                  <h5 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mt-6 mb-3">
-                    Actionable Advice
-                  </h5>
-                  <p className="font-body text-lg font-medium">
-                    Do not sign if your business requirements might change.
-                    Attempt to negotiate a penalty-free cancellation window of
-                    30 days.
-                  </p>
-                </div>
-              </div>
-            </article>
+                  <div>
+                    <h5 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mb-3">
+                      Simple Explanation
+                    </h5>
+                    <p className="font-body text-xl leading-relaxed max-w-4xl">
+                      {flag.simple_explanation}
+                    </p>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
       )}
