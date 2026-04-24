@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import {
   Upload,
   FileText,
@@ -9,14 +11,22 @@ import {
   ShieldAlert,
   Loader2,
 } from "lucide-react";
+import { useAnalysisStore } from "./store/AnalysisStore";
 
 export default function LegaleseTranslator() {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const { analysisResult, fileName, setAnalysisResult } = useAnalysisStore();
+
+  // Hydration fix for Next.js SSR
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -33,7 +43,7 @@ export default function LegaleseTranslator() {
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       setFile(e.dataTransfer.files[0]);
-      setAnalysisResult(null);
+      setAnalysisResult(null, null);
       setError(null);
     }
   };
@@ -43,7 +53,7 @@ export default function LegaleseTranslator() {
 
     setIsProcessing(true);
     setError(null);
-    setAnalysisResult(null);
+    setAnalysisResult(null, null);
 
     try {
       // 1. Upload the file
@@ -72,7 +82,9 @@ export default function LegaleseTranslator() {
       }
 
       const analyzeData = await analyzeRes.json();
-      setAnalysisResult(analyzeData);
+
+      // Save result and file name to persistent storage
+      setAnalysisResult(analyzeData, file.name);
 
       // Smoothly scroll to the results
       setTimeout(() => {
@@ -87,6 +99,9 @@ export default function LegaleseTranslator() {
       setIsProcessing(false);
     }
   };
+
+  // Prevent rendering persistent state until client has mounted to avoid hydration errors
+  if (!isMounted) return null;
 
   return (
     <main className="max-w-7xl mx-auto px-8 md:px-8 lg:px-18 py-8 md:py-5">
@@ -147,7 +162,7 @@ export default function LegaleseTranslator() {
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
                   setFile(e.target.files[0]);
-                  setAnalysisResult(null);
+                  setAnalysisResult(null, null); // Clear persistent state on new file
                   setError(null);
                 }
               }}
@@ -182,7 +197,6 @@ export default function LegaleseTranslator() {
             )}
           </label>
 
-          {/* ERROR MESSAGE DISPLAY */}
           {error && (
             <div className="mt-8 border-2 border-black bg-white p-4 flex items-center gap-4">
               <AlertTriangle className="text-black" size={24} />
@@ -230,9 +244,9 @@ export default function LegaleseTranslator() {
       {analysisResult && (
         <section
           id="analysis-results"
-          className="animate-in fade-in duration-500 mt-16"
+          className="animate-in fade-in duration-500 mt-6"
         >
-          <hr className="border-t-[8px] border-black my-24" />
+          <hr className="border-t-[8px] border-black my-15" />
 
           <header className="mb-16 border-b-2 border-black pb-8 grid grid-cols-1 md:grid-cols-12 gap-8 items-end">
             <div className="md:col-span-8">
@@ -243,10 +257,10 @@ export default function LegaleseTranslator() {
                 Risk Assessment Profile
               </h2>
               <div className="font-mono text-sm mt-4 text-muted-foreground flex flex-wrap gap-4 uppercase tracking-widest">
-                <span className="truncate max-w-[200px] md:max-w-md">
+                {/* <span className="truncate max-w-[200px] md:max-w-md">
                   ID: {analysisResult.filename}
-                </span>
-                <span>•</span>
+                </span> */}
+                {/* <span>•</span> */}
                 <span>
                   Flags: {analysisResult.analysis.flags.length} Detected
                 </span>
