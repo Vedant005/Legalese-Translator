@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 from fastapi import FastAPI
@@ -6,6 +7,14 @@ from fastapi import FastAPI
 from api.endpoints import router
 
 app = FastAPI(title="Legalese Translator AI")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],    # Change from ["GET", "POST"] to ["*"]
+    allow_headers=["*"],
+)
 
 app.include_router(router)
 
