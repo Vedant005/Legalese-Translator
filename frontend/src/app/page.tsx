@@ -108,7 +108,7 @@ export default function LegaleseTranslator() {
       <header className="mb-10">
         <div className="flex items-center justify-between border-b border-black pb-4">
           <h1 className="font-display font-bold text-xl uppercase tracking-widest">
-            Aequitas{" "}
+            Legalese{" "}
             <span className="font-mono text-muted-foreground text-sm normal-case">
               v1.0
             </span>
