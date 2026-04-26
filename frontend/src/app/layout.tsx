@@ -24,6 +24,49 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Legalese Translator | Precise Contract Analysis",
   description: "Translate complex terms of service into plain English.",
+
+  openGraph: {
+    title: "Legalese Translator | Precise Contract Analysis",
+    description: "Translate complex terms of service into plain English.",
+    url: "https://legalese.vercel.app",
+    siteName: "Legalese Translator | Precise Contract Analysis",
+    images: [
+      {
+        url: "/legalese.png",
+        width: 1200,
+        height: 630,
+        alt: "Legalese Translator | Precise Contract Analysis Preview",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Legalese Translator | Precise Contract Analysis",
+    description: "Generate content from videos",
+    images: ["/legalese.png"],
+    creator: "@VedantKane56217",
+  },
+
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon-16x16.png",
+    apple: "/apple-touch-icon.png",
+  },
+
+  authors: [{ name: "Vedant" }],
+  creator: "Vedant",
+  publisher: "Vedant",
+
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+    },
+  },
 };
 
 export default function RootLayout({
