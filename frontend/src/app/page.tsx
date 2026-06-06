@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import {
   Upload,
   FileText,
@@ -60,10 +58,13 @@ export default function LegaleseTranslator() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const uploadRes = await fetch("http://localhost:8000/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const uploadRes = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/upload`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
 
       if (!uploadRes.ok) {
         throw new Error("Failed to upload the document.");
@@ -74,7 +75,7 @@ export default function LegaleseTranslator() {
 
       // 2. Fetch the analysis using the generated namespace
       const analyzeRes = await fetch(
-        `http://localhost:8000/analyze/${namespace}`,
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/analyze/${namespace}`,
       );
 
       if (!analyzeRes.ok) {
