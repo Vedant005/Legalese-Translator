@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import {
   Playfair_Display,
   Source_Serif_4,
@@ -86,6 +87,7 @@ export default function RootLayout({
           }}
         ></div>
         {children}
+        <Analytics />
       </body>
     </html>
   );
